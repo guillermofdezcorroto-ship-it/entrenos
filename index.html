@@ -184,7 +184,7 @@ const TESSERACT_CDN = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1
 let entrenamientos = [];
 let chartDist = null, chartCal = null;
 
-// Set today
+// Set today as default
 document.getElementById("f-fecha").value = new Date().toISOString().split("T")[0];
 
 // Boot: intentar cargar JSON del servidor
@@ -209,6 +209,12 @@ function showTab(t) {
 // ── OCR con Tesseract ──
 async function processImage(e) {
   const file = e.target.files[0]; if(!file) return;
+
+  // Extraer fecha del nombre del archivo (ej: 20260216_180936.jpg → 2026-02-16)
+  const nameMatch = file.name.match(/^(\d{4})(\d{2})(\d{2})_/);
+  if(nameMatch) {
+    document.getElementById("f-fecha").value = `${nameMatch[1]}-${nameMatch[2]}-${nameMatch[3]}`;
+  }
   const url = URL.createObjectURL(file);
   const img = document.getElementById("img-preview");
   img.src = url; img.style.display = "block";
