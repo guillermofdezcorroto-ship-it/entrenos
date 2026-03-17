@@ -6,6 +6,7 @@
   <title>🚴 Fitness Tracker</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{min-height:100vh;background:#0f0f1a;color:#e2e8f0;font-family:'Segoe UI',sans-serif}
@@ -33,10 +34,10 @@
     .field input{width:100%;padding:9px 12px;border-radius:8px;background:#16213e;border:1px solid #4a5568;color:#e2e8f0;font-size:14px;outline:none;transition:border-color .2s}
     .field input:focus{border-color:#e53e3e}
     .btn{display:inline-flex;align-items:center;gap:7px;padding:11px 20px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;margin-top:6px}
-    .btn:hover:not(:disabled){opacity:.85}
-    .btn:disabled{opacity:.35;cursor:not-allowed}
+    .btn:hover{opacity:.85}
     .btn-green{background:linear-gradient(135deg,#38a169,#276749);color:#fff}
     .btn-blue{background:linear-gradient(135deg,#3182ce,#2b6cb0);color:#fff}
+    .btn-red{background:linear-gradient(135deg,#e53e3e,#c53030);color:#fff}
     .btn-gray{background:#2d3748;color:#e2e8f0;border:1px solid #4a5568}
     .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
     #img-preview{max-width:100%;border-radius:10px;margin-top:12px;display:none;border:1px solid #2d3748}
@@ -132,18 +133,11 @@
   <!-- HISTORIAL -->
   <div id="tab-historial" style="display:none">
     <div class="card">
-      <h2>📂 Cargar historial JSON</h2>
-      <label class="drop-zone" for="json-load-input">
-        <span class="dz-icon">📂</span>
-        <span class="dz-lbl">Abre tu entrenamientos.json</span>
-        <span class="dz-sub">Para cargar tu historial guardado</span>
-      </label>
-      <input type="file" id="json-load-input" accept=".json" style="display:none" onchange="loadJSON(event)"/>
-      <div id="json-load-status" class="status"></div>
-    </div>
-    <div class="card">
       <h2>📋 Historial de entrenamientos</h2>
-      <div id="historial-content"><div class="empty">No hay entrenamientos.<br>Sube una foto o carga tu JSON.</div></div>
+      <div id="historial-content"><div class="empty">No hay entrenamientos registrados todavía.</div></div>
+      <div class="btn-row">
+        <button class="btn btn-red" onclick="borrarTodo()">🗑️ Borrar todo</button>
+      </div>
     </div>
   </div>
 
@@ -162,14 +156,24 @@
   <!-- EXPORTAR -->
   <div id="tab-exportar" style="display:none">
     <div class="card">
-      <h2>💾 Guardar JSON (para GitHub)</h2>
-      <p style="color:#718096;font-size:13px;margin-bottom:16px">Descarga el JSON actualizado y súbelo a tu repositorio GitHub. Render se actualizará automáticamente.</p>
+      <h2>💾 Copia de seguridad JSON</h2>
+      <p style="color:#718096;font-size:13px;margin-bottom:16px">Descarga el JSON y súbelo a GitHub como copia de seguridad. Los datos también se guardan automáticamente en este dispositivo.</p>
       <button class="btn btn-green" onclick="downloadJSON()">⬇️ Descargar entrenamientos.json</button>
       <div id="json-dl-status" class="status"></div>
     </div>
     <div class="card">
+      <h2>📂 Importar JSON</h2>
+      <p style="color:#718096;font-size:13px;margin-bottom:16px">Importa un JSON guardado anteriormente (por ejemplo desde otro dispositivo).</p>
+      <label class="drop-zone" for="json-import-input">
+        <span class="dz-icon">📂</span>
+        <span class="dz-lbl">Abre tu entrenamientos.json</span>
+      </label>
+      <input type="file" id="json-import-input" accept=".json" style="display:none" onchange="importJSON(event)"/>
+      <div id="json-import-status" class="status"></div>
+    </div>
+    <div class="card">
       <h2>📊 Exportar a Excel</h2>
-      <p style="color:#718096;font-size:13px;margin-bottom:16px">Exporta todos tus entrenamientos a un archivo Excel.</p>
+      <p style="color:#718096;font-size:13px;margin-bottom:16px">Exporta todos tus entrenamientos a Excel.</p>
       <button class="btn btn-blue" onclick="downloadExcel()">⬇️ Descargar entrenamientos.xlsx</button>
       <div id="excel-dl-status" class="status"></div>
     </div>
@@ -178,288 +182,357 @@
 </main>
 
 <script>
-// Tesseract cargado dinámicamente para evitar problemas de Worker en algunos entornos
-const TESSERACT_CDN = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js";
+var entrenamientos = [];
+var chartDist = null;
+var chartCal = null;
+var STORAGE_KEY = "fitness_entrenamientos";
 
-let entrenamientos = [];
-let chartDist = null, chartCal = null;
-
-// Set today as default
-document.getElementById("f-fecha").value = new Date().toISOString().split("T")[0];
-
-: intentar cargar JSON del servidor
-fetch("entrenamientos.json")
-  .then(r => r.ok ? r.json() : [])
-  .then(data => {
-    if(Array.isArray(data) && data.length) {
-      entrenamientos = data;
-      renderHistorial(); renderCharts(); updateSubtitle();
+// ── Boot ──
+function init() {
+  // 1. Intentar cargar desde localStorage
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      entrenamientos = JSON.parse(saved);
+    } catch(e) {
+      entrenamientos = [];
     }
-  }).catch(() => {});
+  }
+
+  // 2. Si no hay datos locales, intentar cargar desde servidor
+  if (!entrenamientos.length) {
+    fetch("entrenamientos.json")
+      .then(function(r) { return r.ok ? r.json() : []; })
+      .then(function(data) {
+        if (Array.isArray(data) && data.length) {
+          entrenamientos = data;
+          saveLocal();
+          renderHistorial();
+          renderCharts();
+          updateSubtitle();
+        }
+      })
+      .catch(function() {});
+  }
+
+  // Set today as default date
+  document.getElementById("f-fecha").value = new Date().toISOString().split("T")[0];
+  renderHistorial();
+  updateSubtitle();
+}
+
+function saveLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(entrenamientos));
+}
 
 // ── Tabs ──
 function showTab(t) {
-  ["registrar","historial","graficas","exportar"].forEach(id =>
-    document.getElementById("tab-"+id).style.display = id===t ? "block" : "none");
-  document.querySelectorAll(".tab").forEach((el,i) =>
-    el.classList.toggle("active", ["registrar","historial","graficas","exportar"][i]===t));
-  if(t==="graficas") setTimeout(renderCharts, 100);
+  var tabs = ["registrar","historial","graficas","exportar"];
+  for (var i = 0; i < tabs.length; i++) {
+    document.getElementById("tab-" + tabs[i]).style.display = tabs[i] === t ? "block" : "none";
+  }
+  var tabEls = document.querySelectorAll(".tab");
+  for (var i = 0; i < tabEls.length; i++) {
+    tabEls[i].classList.toggle("active", tabs[i] === t);
+  }
+  if (t === "graficas") setTimeout(renderCharts, 100);
 }
 
-// ── OCR con Tesseract ──
-async function processImage(e) {
-  const file = e.target.files[0]; if(!file) return;
+// ── OCR ──
+function processImage(e) {
+  var file = e.target.files[0];
+  if (!file) return;
 
-  // Extraer fecha del nombre del archivo (ej: 20260216_180936.jpg → 2026-02-16)
-  const nameMatch = file.name.match(/^(\d{4})(\d{2})(\d{2})_/);
-  if(nameMatch) {
-    document.getElementById("f-fecha").value = `${nameMatch[1]}-${nameMatch[2]}-${nameMatch[3]}`;
+  // Extraer fecha del nombre del archivo (ej: 20260216_180936.jpg)
+  var nameMatch = file.name.match(/^(\d{4})(\d{2})(\d{2})_/);
+  if (nameMatch) {
+    document.getElementById("f-fecha").value = nameMatch[1] + "-" + nameMatch[2] + "-" + nameMatch[3];
   }
-  const url = URL.createObjectURL(file);
-  const img = document.getElementById("img-preview");
-  img.src = url; img.style.display = "block";
 
-  const pw = document.getElementById("progress-wrap");
+  var url = URL.createObjectURL(file);
+  var img = document.getElementById("img-preview");
+  img.src = url;
+  img.style.display = "block";
+
+  var pw = document.getElementById("progress-wrap");
   pw.style.display = "block";
   setStatus("ocr-status", "", "");
 
-  try {
-    // Cargar Tesseract dinámicamente si no está disponible
-    if(typeof Tesseract === "undefined") {
-      await loadScript(TESSERACT_CDN);
-    }
-
-    const result = await Tesseract.recognize(url, "spa+eng", {
-      logger: m => {
-        if(m.status === "recognizing text") {
-          const pct = Math.round(m.progress * 100);
-          document.getElementById("progress-fill").style.width = pct + "%";
-          document.getElementById("progress-label").textContent = `Analizando imagen... ${pct}%`;
-        }
+  Tesseract.recognize(url, "spa+eng", {
+    logger: function(m) {
+      if (m.status === "recognizing text") {
+        var pct = Math.round(m.progress * 100);
+        document.getElementById("progress-fill").style.width = pct + "%";
+        document.getElementById("progress-label").textContent = "Analizando imagen... " + pct + "%";
       }
-    });
-
+    }
+  }).then(function(result) {
     pw.style.display = "none";
     parseOCR(result.data.text);
-    setStatus("ocr-status", "✅ OCR completado. Revisa y corrige los datos si es necesario.", true);
-  } catch(err) {
+    setStatus("ocr-status", "✅ OCR completado. Revisa y corrige los datos si es necesario.", "ok");
+  }).catch(function(err) {
     pw.style.display = "none";
-    setStatus("ocr-status", "⚠️ OCR no disponible en este entorno. Introduce los datos manualmente.", false);
+    setStatus("ocr-status", "⚠️ OCR no disponible. Introduce los datos manualmente.", "err");
     console.warn("Tesseract error:", err);
-  }
-}
-
-function loadScript(src) {
-  return new Promise((res, rej) => {
-    const s = document.createElement("script");
-    s.src = src; s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
   });
 }
 
-function n(s){ return String(s).replace(",","."); }
+function nc(s) { return String(s).replace(",", "."); }
 
 function parseOCR(text) {
-  console.log("OCR TEXT:", text);
-  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  console.log("OCR:", text);
 
-  // Tiempo mm:ss — primer patrón HH:MM
-  const tMatch = text.match(/\b(\d{1,2}:\d{2})\b/);
-  if(tMatch) set("f-tiempo", tMatch[1]);
+  // Tiempo mm:ss
+  var tMatch = text.match(/\b(\d{1,2}:\d{2})\b/);
+  if (tMatch) setField("f-tiempo", tMatch[1]);
 
-  // Distancia — buscar patrón xx,xx km (ej: 17,38) priorizando números mayores
-  const dMatches = [...text.matchAll(/\b(\d{1,3}[,.]\d{1,2})\b/g)];
-  const dFiltered = dMatches.map(m => parseFloat(n(m[1]))).filter(v => v > 5 && v < 200);
-  if(dFiltered.length) set("f-distancia", dFiltered.reduce((a,b) => Math.abs(a-17)<=Math.abs(b-17)?a:b).toString());
+  // Distancia — buscar todos los decimales y elegir el más cercano a un valor típico de bici (10-50km)
+  var dAll = [];
+  var dRe = /\b(\d{1,3}[,.]\d{1,2})\b/g;
+  var dm;
+  while ((dm = dRe.exec(text)) !== null) {
+    var v = parseFloat(nc(dm[1]));
+    if (v >= 5 && v <= 150) dAll.push(v);
+  }
+  if (dAll.length) {
+    // Elegir el mayor valor (la distancia total suele ser el número más grande)
+    var dist = dAll.sort(function(a,b){return b-a;})[0];
+    setField("f-distancia", String(dist));
+  }
 
-  // Calorías quemadas — número 3-4 dígitos cerca de "quemadas" o "400" típico
-  const calMatch = text.match(/(?:quemadas?|calor[ií]as?)[\s\S]{0,30}?(\d{3,4})/i)
-                || text.match(/(\d{3,4})\s*(?:\n|$)/m);
-  if(calMatch) set("f-calorias", calMatch[1]);
+  // Calorías quemadas (número 3-4 dígitos)
+  var calMatch = text.match(/(?:quemadas?|calor[ií]as?)[\s\S]{0,40}?(\d{3,4})/i);
+  if (!calMatch) calMatch = text.match(/\b(4\d{2}|[3-9]\d{2})\b/);
+  if (calMatch) setField("f-calorias", calMatch[1]);
 
   // Calorías/hora
-  const chMatch = text.match(/(?:hora|\/h(?:ora)?)[\s\S]{0,20}?(\d{3,4})/i);
-  if(chMatch) set("f-caloriashora", chMatch[1]);
+  var chMatch = text.match(/(?:hora|\/h)[\s\S]{0,20}?(\d{3,4})/i);
+  if (chMatch) setField("f-caloriashora", chMatch[1]);
 
-  // Velocidad — número con decimal cerca de km/h
-  const vMatch = text.match(/(?:velocidad|km\/h)[\s\S]{0,20}?(\d{1,3}[,.]\d)/i)
-              || text.match(/\b(2[0-9]\.\d|3[0-9]\.\d)\b/);
-  if(vMatch) set("f-velocidad", n(vMatch[1]));
+  // Velocidad
+  var vMatch = text.match(/(?:velocidad|km\/h)[\s\S]{0,20}?(\d{1,3}[,.]\d)/i);
+  if (vMatch) setField("f-velocidad", nc(vMatch[1]));
 
   // RPM
-  const rMatch = text.match(/(?:rpm)[\s\S]{0,20}?(\d{2,3}[,.]\d)/i)
-              || text.match(/\b(7[0-9]\.\d|8[0-9]\.\d)\b/);
-  if(rMatch) set("f-rpm", n(rMatch[1]));
+  var rMatch = text.match(/(?:rpm)[\s\S]{0,20}?(\d{2,3}[,.]\d)/i);
+  if (rMatch) setField("f-rpm", nc(rMatch[1]));
 
   // Vatios
-  const wMatch = text.match(/(?:vati|watt)[\s\S]{0,20}?(\d{2,3})/i)
-              || text.match(/\b(1[0-9]{2}|2[0-4][0-9])\b/);
-  if(wMatch) set("f-vatios", wMatch[1]);
+  var wMatch = text.match(/(?:vati|watt)[\s\S]{0,20}?(\d{2,3})/i);
+  if (wMatch) setField("f-vatios", wMatch[1]);
 
   // MET
-  const metMatch = text.match(/(?:met)[\s\S]{0,20}?(\d{1,2}[,.]\d)/i)
-                || text.match(/\b([6-9]\.\d|[1][0-2]\.\d)\b/);
-  if(metMatch) set("f-met", n(metMatch[1]));
+  var metMatch = text.match(/(?:met)[\s\S]{0,20}?(\d{1,2}[,.]\d)/i);
+  if (metMatch) setField("f-met", nc(metMatch[1]));
 
-  // Cadencia — segundo patrón mm:ss
-  const cadMatches = [...text.matchAll(/\b(\d{1,2}:\d{2})\b/g)];
-  if(cadMatches.length >= 2) set("f-cadencia", cadMatches[1][1]);
+  // Cadencia — segundo mm:ss del texto
+  var cadAll = [];
+  var cadRe = /\b(\d{1,2}:\d{2})\b/g;
+  var cm;
+  while ((cm = cadRe.exec(text)) !== null) cadAll.push(cm[1]);
+  if (cadAll.length >= 2) setField("f-cadencia", cadAll[1]);
 }
 
-function set(id, val) {
-  if(val !== undefined && val !== null && val !== "")
+function setField(id, val) {
+  if (val !== undefined && val !== null && val !== "") {
     document.getElementById(id).value = val;
+  }
 }
 
 // ── Guardar ──
 function guardarEntrenamiento() {
-  const fecha = document.getElementById("f-fecha").value;
-  if(!fecha) { setStatus("save-status","❌ La fecha es obligatoria", false); return; }
+  var fecha = document.getElementById("f-fecha").value;
+  if (!fecha) { setStatus("save-status", "❌ La fecha es obligatoria", "err"); return; }
 
-  const flt = id => { const v = document.getElementById(id).value.replace(",","."); return parseFloat(v) || 0; };
-  const int = id => { const v = document.getElementById(id).value.replace(",","."); return parseInt(v) || 0; };
-  const str = id => document.getElementById(id).value.trim();
+  function flt(id) { return parseFloat(document.getElementById(id).value.replace(",",".")) || 0; }
+  function int(id) { return parseInt(document.getElementById(id).value.replace(",",".")) || 0; }
+  function str(id) { return document.getElementById(id).value.trim(); }
 
-  const entry = {
-    fecha,
-    tiempo:       str("f-tiempo"),
-    distancia:    flt("f-distancia"),
-    calorias:     int("f-calorias"),
+  var entry = {
+    fecha: fecha,
+    tiempo: str("f-tiempo"),
+    distancia: flt("f-distancia"),
+    calorias: int("f-calorias"),
     caloriasHora: int("f-caloriashora"),
-    velocidad:    flt("f-velocidad"),
-    rpm:          flt("f-rpm"),
-    cadencia:     str("f-cadencia"),
-    vatios:       int("f-vatios"),
-    met:          flt("f-met"),
-    fcMedia:      int("f-fcmedia"),
-    fcMax:        int("f-fcmax"),
+    velocidad: flt("f-velocidad"),
+    rpm: flt("f-rpm"),
+    cadencia: str("f-cadencia"),
+    vatios: int("f-vatios"),
+    met: flt("f-met"),
+    fcMedia: int("f-fcmedia"),
+    fcMax: int("f-fcmax")
   };
 
-  const idx = entrenamientos.findIndex(e => e.fecha === fecha);
-  if(idx >= 0) entrenamientos[idx] = entry;
+  var idx = -1;
+  for (var i = 0; i < entrenamientos.length; i++) {
+    if (entrenamientos[i].fecha === fecha) { idx = i; break; }
+  }
+  if (idx >= 0) entrenamientos[idx] = entry;
   else entrenamientos.push(entry);
-  entrenamientos.sort((a,b) => a.fecha.localeCompare(b.fecha));
 
-  renderHistorial(); renderCharts(); updateSubtitle();
-  setStatus("save-status", `✅ Entrenamiento del ${fecha} guardado. Ve a "Exportar" para descargar el JSON.`, true);
+  entrenamientos.sort(function(a,b) { return a.fecha.localeCompare(b.fecha); });
+  saveLocal();
+  renderHistorial();
+  renderCharts();
+  updateSubtitle();
+  setStatus("save-status", "✅ Entrenamiento del " + fecha + " guardado correctamente.", "ok");
 }
 
 function limpiarFormulario() {
-  ["f-tiempo","f-distancia","f-calorias","f-caloriashora","f-velocidad",
-   "f-rpm","f-cadencia","f-vatios","f-met","f-fcmedia","f-fcmax"]
-  .forEach(id => document.getElementById(id).value = "");
-}
-
-// ── Cargar JSON ──
-function loadJSON(e) {
-  const file = e.target.files[0]; if(!file) return;
-  const r = new FileReader();
-  r.onload = evt => {
-    try {
-      const data = JSON.parse(evt.target.result);
-      if(!Array.isArray(data)) throw new Error("Formato incorrecto");
-      entrenamientos = data;
-      entrenamientos.sort((a,b) => a.fecha.localeCompare(b.fecha));
-      renderHistorial(); renderCharts(); updateSubtitle();
-      setStatus("json-load-status", `✅ ${data.length} entrenamientos cargados`, true);
-    } catch(err) { setStatus("json-load-status","❌ "+err.message, false); }
-  };
-  r.readAsText(file);
+  var ids = ["f-tiempo","f-distancia","f-calorias","f-caloriashora","f-velocidad","f-rpm","f-cadencia","f-vatios","f-met","f-fcmedia","f-fcmax"];
+  for (var i = 0; i < ids.length; i++) document.getElementById(ids[i]).value = "";
 }
 
 // ── Historial ──
 function renderHistorial() {
-  const c = document.getElementById("historial-content");
-  if(!entrenamientos.length) {
-    c.innerHTML = '<div class="empty">No hay entrenamientos registrados.</div>'; return;
+  var c = document.getElementById("historial-content");
+  if (!entrenamientos.length) {
+    c.innerHTML = '<div class="empty">No hay entrenamientos registrados todavía.</div>';
+    return;
   }
-  c.innerHTML = `<div class="tbl-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Tiempo</th><th>Distancia</th><th>Calorías</th><th>Velocidad</th><th>Vatios</th><th>RPM</th><th></th></tr></thead>
-    <tbody>${[...entrenamientos].reverse().map(e =>`
-      <tr>
-        <td class="fecha-col">${e.fecha}</td>
-        <td>${e.tiempo||"-"}</td>
-        <td>${e.distancia} km</td>
-        <td>${e.calorias} kcal</td>
-        <td>${e.velocidad} km/h</td>
-        <td>${e.vatios} W</td>
-        <td>${e.rpm}</td>
-        <td><button class="badge-del" onclick="eliminar('${e.fecha}')">🗑️</button></td>
-      </tr>`).join("")}
-    </tbody></table></div>`;
+  var rows = "";
+  var list = entrenamientos.slice().reverse();
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    rows += '<tr>' +
+      '<td class="fecha-col">' + e.fecha + '</td>' +
+      '<td>' + (e.tiempo||"-") + '</td>' +
+      '<td>' + e.distancia + ' km</td>' +
+      '<td>' + e.calorias + ' kcal</td>' +
+      '<td>' + e.velocidad + ' km/h</td>' +
+      '<td>' + e.vatios + ' W</td>' +
+      '<td>' + e.rpm + '</td>' +
+      '<td><button class="badge-del" onclick="eliminar(\'' + e.fecha + '\')">🗑️</button></td>' +
+      '</tr>';
+  }
+  c.innerHTML = '<div class="tbl-wrap"><table>' +
+    '<thead><tr><th>Fecha</th><th>Tiempo</th><th>Distancia</th><th>Calorías</th><th>Velocidad</th><th>Vatios</th><th>RPM</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div>';
 }
 
 function eliminar(fecha) {
-  if(!confirm(`¿Eliminar entrenamiento del ${fecha}?`)) return;
-  entrenamientos = entrenamientos.filter(e => e.fecha !== fecha);
-  renderHistorial(); renderCharts(); updateSubtitle();
+  if (!confirm("¿Eliminar entrenamiento del " + fecha + "?")) return;
+  var nueva = [];
+  for (var i = 0; i < entrenamientos.length; i++) {
+    if (entrenamientos[i].fecha !== fecha) nueva.push(entrenamientos[i]);
+  }
+  entrenamientos = nueva;
+  saveLocal();
+  renderHistorial();
+  renderCharts();
+  updateSubtitle();
+}
+
+function borrarTodo() {
+  if (!confirm("¿Borrar TODOS los entrenamientos? Esta acción no se puede deshacer.")) return;
+  entrenamientos = [];
+  saveLocal();
+  renderHistorial();
+  renderCharts();
+  updateSubtitle();
 }
 
 // ── Gráficas ──
 function renderCharts() {
-  if(!entrenamientos.length) return;
-  const sorted = [...entrenamientos].sort((a,b) => a.fecha.localeCompare(b.fecha));
-  const labels = sorted.map(e => e.fecha);
-  const mkCfg = (label, data, color) => ({
-    type: "line",
-    data: { labels, datasets:[{
-      label, data, borderColor: color, backgroundColor: color+"33",
-      borderWidth: 2, pointBackgroundColor: color, pointRadius: 5, tension: 0.3, fill: true
-    }]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color:"#a0aec0" }}},
-      scales: {
-        x: { ticks:{color:"#718096"}, grid:{color:"#2d3748"}},
-        y: { ticks:{color:"#718096"}, grid:{color:"#2d3748"}}
+  if (!entrenamientos.length) return;
+  var sorted = entrenamientos.slice().sort(function(a,b) { return a.fecha.localeCompare(b.fecha); });
+  var labels = sorted.map(function(e) { return e.fecha; });
+  var dists  = sorted.map(function(e) { return e.distancia; });
+  var cals   = sorted.map(function(e) { return e.calorias; });
+
+  function mkCfg(label, data, color) {
+    return {
+      type: "line",
+      data: { labels: labels, datasets: [{ label: label, data: data,
+        borderColor: color, backgroundColor: color + "33",
+        borderWidth: 2, pointBackgroundColor: color, pointRadius: 5, tension: 0.3, fill: true
+      }]},
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#a0aec0" }}},
+        scales: {
+          x: { ticks: { color: "#718096" }, grid: { color: "#2d3748" }},
+          y: { ticks: { color: "#718096" }, grid: { color: "#2d3748" }}
+        }
       }
-    }
-  });
-  if(chartDist) chartDist.destroy();
-  if(chartCal)  chartCal.destroy();
-  chartDist = new Chart(document.getElementById("chart-distancia"), mkCfg("Distancia (km)", sorted.map(e=>e.distancia), "#e53e3e"));
-  chartCal  = new Chart(document.getElementById("chart-calorias"),  mkCfg("Calorías", sorted.map(e=>e.calorias), "#38a169"));
+    };
+  }
+
+  if (chartDist) chartDist.destroy();
+  if (chartCal)  chartCal.destroy();
+  chartDist = new Chart(document.getElementById("chart-distancia"), mkCfg("Distancia (km)", dists, "#e53e3e"));
+  chartCal  = new Chart(document.getElementById("chart-calorias"),  mkCfg("Calorías", cals, "#38a169"));
 }
 
-// ── Exportar ──
+// ── Import / Export ──
+function importJSON(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var r = new FileReader();
+  r.onload = function(evt) {
+    try {
+      var data = JSON.parse(evt.target.result);
+      if (!Array.isArray(data)) throw new Error("Formato incorrecto");
+      entrenamientos = data;
+      entrenamientos.sort(function(a,b) { return a.fecha.localeCompare(b.fecha); });
+      saveLocal();
+      renderHistorial();
+      renderCharts();
+      updateSubtitle();
+      setStatus("json-import-status", "✅ " + data.length + " entrenamientos importados correctamente.", "ok");
+    } catch(err) {
+      setStatus("json-import-status", "❌ " + err.message, "err");
+    }
+  };
+  r.readAsText(file);
+}
+
 function downloadJSON() {
-  if(!entrenamientos.length) { setStatus("json-dl-status","❌ No hay datos para exportar", false); return; }
+  if (!entrenamientos.length) { setStatus("json-dl-status", "❌ No hay datos para exportar", "err"); return; }
   dl(JSON.stringify(entrenamientos, null, 2), "entrenamientos.json", "application/json");
-  setStatus("json-dl-status","✅ JSON descargado. Súbelo a GitHub para actualizar tu historial.", true);
+  setStatus("json-dl-status", "✅ JSON descargado. Súbelo a GitHub como copia de seguridad.", "ok");
 }
 
 function downloadExcel() {
-  if(!entrenamientos.length) { setStatus("excel-dl-status","❌ No hay datos para exportar", false); return; }
-  const ws = XLSX.utils.json_to_sheet(entrenamientos.map(e => ({
-    "Fecha": e.fecha, "Tiempo": e.tiempo,
-    "Distancia (km)": e.distancia, "Calorías": e.calorias,
-    "Calorías/hora": e.caloriasHora, "Velocidad (km/h)": e.velocidad,
-    "RPM": e.rpm, "Cadencia": e.cadencia,
-    "Vatios": e.vatios, "MET": e.met,
-    "FC Media (bpm)": e.fcMedia, "FC Máx (bpm)": e.fcMax
-  })));
-  const wb = XLSX.utils.book_new();
+  if (!entrenamientos.length) { setStatus("excel-dl-status", "❌ No hay datos para exportar", "err"); return; }
+  var rows = entrenamientos.map(function(e) {
+    return {
+      "Fecha": e.fecha, "Tiempo": e.tiempo,
+      "Distancia (km)": e.distancia, "Calorías": e.calorias,
+      "Calorías/hora": e.caloriasHora, "Velocidad (km/h)": e.velocidad,
+      "RPM": e.rpm, "Cadencia": e.cadencia, "Vatios": e.vatios,
+      "MET": e.met, "FC Media (bpm)": e.fcMedia, "FC Máx (bpm)": e.fcMax
+    };
+  });
+  var ws = XLSX.utils.json_to_sheet(rows);
+  var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Entrenamientos");
   XLSX.writeFile(wb, "entrenamientos.xlsx");
-  setStatus("excel-dl-status","✅ Excel descargado correctamente.", true);
+  setStatus("excel-dl-status", "✅ Excel descargado correctamente.", "ok");
 }
 
 // ── Helpers ──
 function updateSubtitle() {
-  document.getElementById("subtitle").textContent = `${entrenamientos.length} entrenamientos registrados`;
+  document.getElementById("subtitle").textContent = entrenamientos.length + " entrenamientos registrados";
 }
-function setStatus(id, msg, ok) {
-  const el = document.getElementById(id);
+
+function setStatus(id, msg, type) {
+  var el = document.getElementById(id);
   el.innerHTML = msg;
-  el.className = "status " + (ok===true?"ok":ok===false?"err":"info");
+  el.className = "status " + (type || "info");
   el.style.display = msg ? "block" : "none";
 }
+
 function dl(content, filename, type) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([content],{type}));
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], {type: type}));
   a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
+
+// Arrancar
+init();
 </script>
 </body>
 </html>
