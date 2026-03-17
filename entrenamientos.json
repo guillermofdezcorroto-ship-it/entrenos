@@ -1,14 +1,22 @@
 [
   {
-    "fecha": "2026-03-16",
-    "tiempo": "",
-    "distancia": 8.1,
+    "fecha": "2026-02-16",
+    "tiempo": "37:58",
+    "distancia": 17.2,
     "calorias": 400,
-    "caloriasHora": 0,
+    "caloriasHora": 632,
+    "velocidad": 0
+  },
+  {
+    "fecha": "2026-02-27",
+    "tiempo": "39:38",
+    "distancia": 17,
+    "calorias": 400,
+    "caloriasHora": 605,
     "velocidad": 0,
     "rpm": 0,
     "cadencia": "",
-    "vatios": 0,
+    "vatios": 138,
     "met": 0,
     "fcMedia": 0,
     "fcMax": 0
