@@ -13,6 +13,9 @@
     header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:16px 24px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:12px}
     header h1{font-size:20px;font-weight:700}
     header p{font-size:12px;color:#718096;margin-top:2px}
+    .gh-badge{margin-left:auto;font-size:11px;padding:4px 10px;border-radius:6px;font-weight:600}
+    .gh-badge.ok{background:#1c4532;color:#9ae6b4}
+    .gh-badge.err{background:#4a1515;color:#feb2b2}
     nav{display:flex;background:#1a1a2e;border-bottom:1px solid #2d3748}
     .tab{flex:1;padding:13px 8px;text-align:center;cursor:pointer;font-size:13px;color:#718096;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;user-select:none}
     .tab.active{color:#e53e3e;border-bottom-color:#e53e3e;font-weight:700}
@@ -33,8 +36,10 @@
     .field label{display:block;font-size:11px;color:#718096;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
     .field input{width:100%;padding:10px 12px;border-radius:8px;background:#16213e;border:1px solid #4a5568;color:#e2e8f0;font-size:15px;outline:none;transition:border-color .2s}
     .field input:focus{border-color:#e53e3e}
+    .field input[type=password]{letter-spacing:2px}
     .btn{display:inline-flex;align-items:center;gap:7px;padding:11px 20px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;margin-top:6px}
     .btn:hover{opacity:.85}
+    .btn:disabled{opacity:.4;cursor:not-allowed}
     .btn-green{background:linear-gradient(135deg,#38a169,#276749);color:#fff}
     .btn-blue{background:linear-gradient(135deg,#3182ce,#2b6cb0);color:#fff}
     .btn-red{background:linear-gradient(135deg,#e53e3e,#c53030);color:#fff}
@@ -58,10 +63,9 @@
     .chart-wrap{position:relative;height:260px;margin-top:8px}
     .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
     .empty{text-align:center;padding:50px 20px;color:#718096;font-size:14px}
-    @media(max-width:600px){
-      .grid2,.grid3{grid-template-columns:1fr 1fr}
-      .charts-grid{grid-template-columns:1fr}
-    }
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr 1fr}.charts-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
@@ -72,13 +76,14 @@
     <h1>Fitness Tracker</h1>
     <p id="subtitle">Life Fitness · Seguimiento de entrenamientos</p>
   </div>
+  <span class="gh-badge err" id="gh-badge">⚙️ Sin configurar</span>
 </header>
 
 <nav>
   <div class="tab active" onclick="showTab('registrar')">📸 Registrar</div>
   <div class="tab" onclick="showTab('historial')">📋 Historial</div>
   <div class="tab" onclick="showTab('graficas')">📊 Gráficas</div>
-  <div class="tab" onclick="showTab('exportar')">💾 Exportar</div>
+  <div class="tab" onclick="showTab('ajustes')">⚙️ Ajustes</div>
 </nav>
 
 <main>
@@ -100,7 +105,6 @@
       </div>
       <div id="ocr-status" class="status"></div>
     </div>
-
     <div class="card">
       <h2>✏️ Datos del entrenamiento</h2>
       <div class="field" style="margin-bottom:16px">
@@ -117,7 +121,7 @@
         <div class="field"><label>💨 Velocidad media (km/h)</label><input id="f-velocidad" placeholder="27.0"/></div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-green" onclick="guardarEntrenamiento()">💾 Guardar entrenamiento</button>
+        <button class="btn btn-green" id="btn-guardar" onclick="guardarEntrenamiento()">💾 Guardar en GitHub</button>
         <button class="btn btn-gray" onclick="limpiarFormulario()">🗑️ Limpiar</button>
       </div>
       <div id="save-status" class="status"></div>
@@ -125,64 +129,54 @@
   </div>
 
   <!-- HISTORIAL -->
-  <div id="tab-historial">
-    <div class="card" style="display:none">
-      <h2>📋 Historial de entrenamientos</h2>
-      <div id="historial-content"><div class="empty">No hay entrenamientos registrados todavía.</div></div>
-      <div class="btn-row">
-        <button class="btn btn-red" onclick="borrarTodo()">🗑️ Borrar todo</button>
-      </div>
-    </div>
-  </div>
   <div id="tab-historial" style="display:none">
     <div class="card">
       <h2>📋 Historial de entrenamientos</h2>
-      <div id="historial-content"><div class="empty">No hay entrenamientos registrados todavía.</div></div>
+      <div id="historial-content"><div class="empty">Cargando datos desde GitHub...</div></div>
       <div class="btn-row">
+        <button class="btn btn-blue" onclick="cargarDesdeGitHub()">🔄 Recargar</button>
         <button class="btn btn-red" onclick="borrarTodo()">🗑️ Borrar todo</button>
       </div>
+      <div id="historial-status" class="status"></div>
     </div>
   </div>
 
   <!-- GRÁFICAS -->
   <div id="tab-graficas" style="display:none">
     <div class="charts-grid">
-      <div class="card">
-        <h2>📍 Distancia (km)</h2>
-        <div class="chart-wrap"><canvas id="chart-distancia"></canvas></div>
-      </div>
-      <div class="card">
-        <h2>🔥 Calorías quemadas</h2>
-        <div class="chart-wrap"><canvas id="chart-calorias"></canvas></div>
-      </div>
-      <div class="card">
-        <h2>🔥 Calorías/hora</h2>
-        <div class="chart-wrap"><canvas id="chart-caloriashora"></canvas></div>
-      </div>
-      <div class="card">
-        <h2>💨 Velocidad media (km/h)</h2>
-        <div class="chart-wrap"><canvas id="chart-velocidad"></canvas></div>
-      </div>
+      <div class="card"><h2>📍 Distancia (km)</h2><div class="chart-wrap"><canvas id="chart-distancia"></canvas></div></div>
+      <div class="card"><h2>🔥 Calorías quemadas</h2><div class="chart-wrap"><canvas id="chart-calorias"></canvas></div></div>
+      <div class="card"><h2>🔥 Calorías/hora</h2><div class="chart-wrap"><canvas id="chart-caloriashora"></canvas></div></div>
+      <div class="card"><h2>💨 Velocidad media (km/h)</h2><div class="chart-wrap"><canvas id="chart-velocidad"></canvas></div></div>
     </div>
   </div>
 
-  <!-- EXPORTAR -->
-  <div id="tab-exportar" style="display:none">
+  <!-- AJUSTES -->
+  <div id="tab-ajustes" style="display:none">
     <div class="card">
-      <h2>💾 Copia de seguridad JSON</h2>
-      <p style="color:#718096;font-size:13px;margin-bottom:16px">Los datos se guardan automáticamente en este dispositivo. Descarga el JSON y súbelo a GitHub como copia de seguridad.</p>
-      <button class="btn btn-green" onclick="downloadJSON()">⬇️ Descargar entrenamientos.json</button>
-      <div id="json-dl-status" class="status"></div>
-    </div>
-    <div class="card">
-      <h2>📂 Importar JSON</h2>
-      <p style="color:#718096;font-size:13px;margin-bottom:16px">Recupera una copia de seguridad o importa datos desde otro dispositivo.</p>
-      <label class="drop-zone" for="json-import-input">
-        <span class="dz-icon">📂</span>
-        <span class="dz-lbl">Abre tu entrenamientos.json</span>
-      </label>
-      <input type="file" id="json-import-input" accept=".json" style="display:none" onchange="importJSON(event)"/>
-      <div id="json-import-status" class="status"></div>
+      <h2>⚙️ Configuración GitHub</h2>
+      <p style="color:#718096;font-size:13px;margin-bottom:20px">Introduce tu token de GitHub una sola vez. Se guardará en este navegador y no será visible en el código.</p>
+      <div class="field" style="margin-bottom:14px">
+        <label>GitHub Personal Access Token</label>
+        <input type="password" id="cfg-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Usuario GitHub</label>
+        <input type="text" id="cfg-user" placeholder="tu-usuario"/>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Nombre del repositorio</label>
+        <input type="text" id="cfg-repo" placeholder="entrenos"/>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Nombre del archivo JSON</label>
+        <input type="text" id="cfg-file" placeholder="entrenamientos.json"/>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="guardarConfig()">💾 Guardar configuración</button>
+        <button class="btn btn-blue" onclick="probarConexion()">🔗 Probar conexión</button>
+      </div>
+      <div id="cfg-status" class="status"></div>
     </div>
     <div class="card">
       <h2>📊 Exportar a Excel</h2>
@@ -197,34 +191,124 @@
 <script>
 var entrenamientos = [];
 var charts = {};
-var STORAGE_KEY = "fitness_entrenamientos";
+var fileSHA = "";
+var STORAGE_KEY = "fitness_config";
 
-function init() {
-  var saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    try { entrenamientos = JSON.parse(saved); } catch(e) { entrenamientos = []; }
-  }
-  if (!entrenamientos.length) {
-    fetch("entrenamientos.json")
-      .then(function(r) { return r.ok ? r.json() : []; })
-      .then(function(data) {
-        if (Array.isArray(data) && data.length) {
-          entrenamientos = data;
-          saveLocal(); renderHistorial(); updateSubtitle();
-        }
-      }).catch(function(){});
-  }
-  document.getElementById("f-fecha").value = new Date().toISOString().split("T")[0];
-  renderHistorial();
-  updateSubtitle();
+// ── Config ──
+function getConfig() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { return {}; }
 }
 
-function saveLocal() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entrenamientos));
+function guardarConfig() {
+  var cfg = {
+    token: document.getElementById("cfg-token").value.trim(),
+    user:  document.getElementById("cfg-user").value.trim(),
+    repo:  document.getElementById("cfg-repo").value.trim(),
+    file:  document.getElementById("cfg-file").value.trim() || "entrenamientos.json"
+  };
+  if (!cfg.token || !cfg.user || !cfg.repo) {
+    setStatus("cfg-status","❌ Rellena todos los campos","err"); return;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  setStatus("cfg-status","✅ Configuración guardada correctamente","ok");
+  updateBadge(true);
+  cargarDesdeGitHub();
 }
 
+function probarConexion() {
+  setStatus("cfg-status",'<span class="spinner"></span>Probando conexión...',"info");
+  var cfg = {
+    token: document.getElementById("cfg-token").value.trim(),
+    user:  document.getElementById("cfg-user").value.trim(),
+    repo:  document.getElementById("cfg-repo").value.trim(),
+    file:  document.getElementById("cfg-file").value.trim() || "entrenamientos.json"
+  };
+  githubGet(cfg).then(function(res) {
+    setStatus("cfg-status","✅ Conexión correcta. " + (res.data ? res.data.length : 0) + " entrenamientos encontrados.","ok");
+  }).catch(function(err) {
+    setStatus("cfg-status","❌ Error: " + err.message,"err");
+  });
+}
+
+function updateBadge(ok) {
+  var b = document.getElementById("gh-badge");
+  if (ok) { b.className = "gh-badge ok"; b.textContent = "✅ GitHub conectado"; }
+  else     { b.className = "gh-badge err"; b.textContent = "⚙️ Sin configurar"; }
+}
+
+// ── GitHub API ──
+function apiURL(cfg) {
+  return "https://api.github.com/repos/" + cfg.user + "/" + cfg.repo + "/contents/" + cfg.file;
+}
+
+function githubGet(cfg) {
+  return fetch(apiURL(cfg), {
+    headers: {
+      "Authorization": "token " + cfg.token,
+      "Accept": "application/vnd.github.v3+json"
+    }
+  }).then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.message) throw new Error(res.message);
+    fileSHA = res.sha;
+    var content = atob(res.content.replace(/\n/g,""));
+    return { data: JSON.parse(content), sha: res.sha };
+  });
+}
+
+function githubPut(cfg, data) {
+  var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+  var body = {
+    message: "Actualizar entrenamientos " + new Date().toISOString().split("T")[0],
+    content: content
+  };
+  if (fileSHA) body.sha = fileSHA;
+  return fetch(apiURL(cfg), {
+    method: "PUT",
+    headers: {
+      "Authorization": "token " + cfg.token,
+      "Accept": "application/vnd.github.v3+json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  }).then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.message && res.message !== "ok") throw new Error(res.message);
+    if (res.content && res.content.sha) fileSHA = res.content.sha;
+    return res;
+  });
+}
+
+function cargarDesdeGitHub() {
+  var cfg = getConfig();
+  if (!cfg.token) {
+    document.getElementById("historial-content").innerHTML = '<div class="empty">Configura tu token de GitHub en ⚙️ Ajustes.</div>';
+    return;
+  }
+  setStatus("historial-status",'<span class="spinner"></span>Cargando desde GitHub...',"info");
+  githubGet(cfg).then(function(res) {
+    entrenamientos = res.data || [];
+    entrenamientos.sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
+    renderHistorial();
+    updateSubtitle();
+    setStatus("historial-status","✅ Datos cargados desde GitHub","ok");
+    updateBadge(true);
+  }).catch(function(err) {
+    // Si el archivo no existe aún, empezamos con array vacío
+    if (err.message === "Not Found") {
+      entrenamientos = [];
+      renderHistorial();
+      setStatus("historial-status","ℹ️ El archivo JSON no existe aún en GitHub. Se creará al guardar el primer entrenamiento.","info");
+    } else {
+      setStatus("historial-status","❌ Error al cargar: " + err.message,"err");
+      updateBadge(false);
+    }
+  });
+}
+
+// ── Tabs ──
 function showTab(t) {
-  var tabs = ["registrar","historial","graficas","exportar"];
+  var tabs = ["registrar","historial","graficas","ajustes"];
   for (var i = 0; i < tabs.length; i++) {
     document.getElementById("tab-" + tabs[i]).style.display = tabs[i] === t ? "block" : "none";
   }
@@ -233,26 +317,20 @@ function showTab(t) {
     els[i].classList.toggle("active", tabs[i] === t);
   }
   if (t === "graficas") setTimeout(renderCharts, 100);
+  if (t === "historial") cargarDesdeGitHub();
 }
 
+// ── OCR ──
 function processImage(e) {
-  var file = e.target.files[0];
-  if (!file) return;
-
-  // Fecha desde nombre de archivo: 20260216_180936.jpg → 2026-02-16
+  var file = e.target.files[0]; if (!file) return;
   var nm = file.name.match(/^(\d{4})(\d{2})(\d{2})_/);
-  if (nm) {
-    document.getElementById("f-fecha").value = nm[1] + "-" + nm[2] + "-" + nm[3];
-  }
-
+  if (nm) document.getElementById("f-fecha").value = nm[1] + "-" + nm[2] + "-" + nm[3];
   var url = URL.createObjectURL(file);
   var img = document.getElementById("img-preview");
   img.src = url; img.style.display = "block";
-
   var pw = document.getElementById("progress-wrap");
   pw.style.display = "block";
-  setStatus("ocr-status", "", "");
-
+  setStatus("ocr-status","","");
   Tesseract.recognize(url, "spa+eng", {
     logger: function(m) {
       if (m.status === "recognizing text") {
@@ -264,56 +342,42 @@ function processImage(e) {
   }).then(function(result) {
     pw.style.display = "none";
     parseOCR(result.data.text);
-    setStatus("ocr-status", "✅ OCR completado. Revisa y corrige si es necesario.", "ok");
-  }).catch(function(err) {
+    setStatus("ocr-status","✅ OCR completado. Revisa y corrige si es necesario.","ok");
+  }).catch(function() {
     pw.style.display = "none";
-    setStatus("ocr-status", "⚠️ OCR no disponible. Introduce los datos manualmente.", "err");
+    setStatus("ocr-status","⚠️ OCR no disponible. Introduce los datos manualmente.","err");
   });
 }
 
-function nc(s) { return String(s).replace(",", "."); }
+function nc(s) { return String(s).replace(",","."); }
 
 function parseOCR(text) {
-  console.log("OCR:", text);
-
-  // Tiempo — primer mm:ss
   var tMatch = text.match(/\b(\d{1,2}:\d{2})\b/);
   if (tMatch) setField("f-tiempo", tMatch[1]);
-
-  // Distancia — mayor decimal entre 5 y 150
   var dAll = [], dRe = /\b(\d{1,3}[,.]\d{1,2})\b/g, dm;
   while ((dm = dRe.exec(text)) !== null) {
     var v = parseFloat(nc(dm[1]));
     if (v >= 5 && v <= 150) dAll.push(v);
   }
-  if (dAll.length) {
-    dAll.sort(function(a,b){return b-a;});
-    setField("f-distancia", String(dAll[0]));
-  }
-
-  // Calorías quemadas
-  var calMatch = text.match(/(?:quemadas?|calor[ií]as?)[\s\S]{0,40}?(\d{3,4})/i);
-  if (!calMatch) calMatch = text.match(/\b([3-9]\d{2}|[1-9]\d{3})\b/);
+  if (dAll.length) { dAll.sort(function(a,b){return b-a;}); setField("f-distancia", String(dAll[0])); }
+  var calMatch = text.match(/(?:quemadas?|calor[ií]as?)[\s\S]{0,40}?(\d{3,4})/i) || text.match(/\b([3-9]\d{2}|[1-9]\d{3})\b/);
   if (calMatch) setField("f-calorias", calMatch[1]);
-
-  // Calorías/hora
   var chMatch = text.match(/(?:hora|\/h)[\s\S]{0,20}?(\d{3,4})/i);
   if (chMatch) setField("f-caloriashora", chMatch[1]);
-
-  // Velocidad
   var vMatch = text.match(/(?:velocidad|km\/h)[\s\S]{0,20}?(\d{1,3}[,.]\d)/i);
   if (vMatch) setField("f-velocidad", nc(vMatch[1]));
 }
 
 function setField(id, val) {
-  if (val !== undefined && val !== null && val !== "") {
-    document.getElementById(id).value = val;
-  }
+  if (val) document.getElementById(id).value = val;
 }
 
+// ── Guardar en GitHub ──
 function guardarEntrenamiento() {
+  var cfg = getConfig();
+  if (!cfg.token) { setStatus("save-status","❌ Configura el token en ⚙️ Ajustes primero","err"); return; }
   var fecha = document.getElementById("f-fecha").value;
-  if (!fecha) { setStatus("save-status", "❌ La fecha es obligatoria", "err"); return; }
+  if (!fecha) { setStatus("save-status","❌ La fecha es obligatoria","err"); return; }
 
   function flt(id) { return parseFloat(document.getElementById(id).value.replace(",",".")) || 0; }
   function str(id) { return document.getElementById(id).value.trim(); }
@@ -327,18 +391,38 @@ function guardarEntrenamiento() {
     velocidad: flt("f-velocidad")
   };
 
-  var idx = -1;
-  for (var i = 0; i < entrenamientos.length; i++) {
-    if (entrenamientos[i].fecha === fecha) { idx = i; break; }
-  }
-  if (idx >= 0) entrenamientos[idx] = entry;
-  else entrenamientos.push(entry);
+  setStatus("save-status",'<span class="spinner"></span>Guardando en GitHub...',"info");
+  document.getElementById("btn-guardar").disabled = true;
 
-  entrenamientos.sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
-  saveLocal();
-  renderHistorial();
-  updateSubtitle();
-  setStatus("save-status", "✅ Entrenamiento del " + fecha + " guardado.", "ok");
+  // Primero cargar el JSON actual para no perder datos
+  githubGet(cfg).then(function(res) {
+    var data = res.data || [];
+    var idx = -1;
+    for (var i = 0; i < data.length; i++) {
+      if (data[i].fecha === fecha) { idx = i; break; }
+    }
+    if (idx >= 0) data[idx] = entry; else data.push(entry);
+    data.sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
+    return githubPut(cfg, data).then(function() {
+      entrenamientos = data;
+      renderHistorial(); updateSubtitle();
+      setStatus("save-status","✅ Entrenamiento del " + fecha + " guardado en GitHub.","ok");
+      document.getElementById("btn-guardar").disabled = false;
+    });
+  }).catch(function(err) {
+    // Si el archivo no existe, crearlo con el primer entrenamiento
+    if (err.message === "Not Found") {
+      fileSHA = "";
+      return githubPut(cfg, [entry]).then(function() {
+        entrenamientos = [entry];
+        renderHistorial(); updateSubtitle();
+        setStatus("save-status","✅ Archivo creado y entrenamiento guardado en GitHub.","ok");
+        document.getElementById("btn-guardar").disabled = false;
+      });
+    }
+    setStatus("save-status","❌ Error: " + err.message,"err");
+    document.getElementById("btn-guardar").disabled = false;
+  });
 }
 
 function limpiarFormulario() {
@@ -346,11 +430,11 @@ function limpiarFormulario() {
   for (var i = 0; i < ids.length; i++) document.getElementById(ids[i]).value = "";
 }
 
+// ── Historial ──
 function renderHistorial() {
   var c = document.getElementById("historial-content");
   if (!entrenamientos.length) {
-    c.innerHTML = '<div class="empty">No hay entrenamientos registrados todavía.</div>';
-    return;
+    c.innerHTML = '<div class="empty">No hay entrenamientos registrados todavía.</div>'; return;
   }
   var rows = "";
   var list = entrenamientos.slice().reverse();
@@ -373,49 +457,50 @@ function renderHistorial() {
 
 function eliminar(fecha) {
   if (!confirm("¿Eliminar entrenamiento del " + fecha + "?")) return;
-  var nueva = [];
-  for (var i = 0; i < entrenamientos.length; i++) {
-    if (entrenamientos[i].fecha !== fecha) nueva.push(entrenamientos[i]);
-  }
-  entrenamientos = nueva;
-  saveLocal(); renderHistorial(); updateSubtitle();
+  var cfg = getConfig();
+  var nueva = entrenamientos.filter(function(e){ return e.fecha !== fecha; });
+  setStatus("historial-status",'<span class="spinner"></span>Eliminando...',"info");
+  githubPut(cfg, nueva).then(function() {
+    entrenamientos = nueva;
+    renderHistorial(); updateSubtitle();
+    setStatus("historial-status","✅ Entrenamiento eliminado.","ok");
+  }).catch(function(err) {
+    setStatus("historial-status","❌ Error: " + err.message,"err");
+  });
 }
 
 function borrarTodo() {
   if (!confirm("¿Borrar TODOS los entrenamientos? No se puede deshacer.")) return;
-  entrenamientos = [];
-  saveLocal(); renderHistorial(); updateSubtitle();
+  var cfg = getConfig();
+  githubPut(cfg, []).then(function() {
+    entrenamientos = [];
+    renderHistorial(); updateSubtitle();
+    setStatus("historial-status","✅ Todos los entrenamientos eliminados.","ok");
+  }).catch(function(err) {
+    setStatus("historial-status","❌ Error: " + err.message,"err");
+  });
 }
 
+// ── Gráficas ──
 function renderCharts() {
   if (!entrenamientos.length) return;
   var sorted = entrenamientos.slice().sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
-  var labels   = sorted.map(function(e){ return e.fecha; });
-
+  var labels = sorted.map(function(e){ return e.fecha; });
   function mkCfg(label, data, color) {
-    return {
-      type: "line",
-      data: { labels: labels, datasets: [{ label: label, data: data,
-        borderColor: color, backgroundColor: color + "33",
-        borderWidth: 2, pointBackgroundColor: color, pointRadius: 5, tension: 0.3, fill: true
-      }]},
-      options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: "#a0aec0" }}},
-        scales: {
-          x: { ticks: { color:"#718096", maxRotation:45 }, grid: { color:"#2d3748" }},
-          y: { ticks: { color:"#718096" }, grid: { color:"#2d3748" }}
-        }
-      }
-    };
+    return { type:"line", data:{ labels:labels, datasets:[{ label:label, data:data,
+      borderColor:color, backgroundColor:color+"33", borderWidth:2,
+      pointBackgroundColor:color, pointRadius:5, tension:0.3, fill:true }]},
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ color:"#a0aec0" }}},
+        scales:{ x:{ ticks:{color:"#718096",maxRotation:45}, grid:{color:"#2d3748"}},
+                 y:{ ticks:{color:"#718096"}, grid:{color:"#2d3748"}}}}};
   }
-
   var defs = [
-    { id:"chart-distancia",   label:"Distancia (km)",    key:"distancia",    color:"#e53e3e" },
-    { id:"chart-calorias",    label:"Calorías quemadas", key:"calorias",     color:"#dd6b20" },
-    { id:"chart-caloriashora",label:"Calorías/hora",     key:"caloriasHora", color:"#d69e2e" },
-    { id:"chart-velocidad",   label:"Velocidad (km/h)",  key:"velocidad",    color:"#38a169" }
+    {id:"chart-distancia",   label:"Distancia (km)",    key:"distancia",    color:"#e53e3e"},
+    {id:"chart-calorias",    label:"Calorías quemadas", key:"calorias",     color:"#dd6b20"},
+    {id:"chart-caloriashora",label:"Calorías/hora",     key:"caloriasHora", color:"#d69e2e"},
+    {id:"chart-velocidad",   label:"Velocidad (km/h)",  key:"velocidad",    color:"#38a169"}
   ];
-
   for (var i = 0; i < defs.length; i++) {
     var d = defs[i];
     if (charts[d.id]) charts[d.id].destroy();
@@ -424,51 +509,24 @@ function renderCharts() {
   }
 }
 
-function importJSON(e) {
-  var file = e.target.files[0]; if (!file) return;
-  var r = new FileReader();
-  r.onload = function(evt) {
-    try {
-      var data = JSON.parse(evt.target.result);
-      if (!Array.isArray(data)) throw new Error("Formato incorrecto");
-      entrenamientos = data;
-      entrenamientos.sort(function(a,b){ return a.fecha.localeCompare(b.fecha); });
-      saveLocal(); renderHistorial(); updateSubtitle();
-      setStatus("json-import-status", "✅ " + data.length + " entrenamientos importados.", "ok");
-    } catch(err) { setStatus("json-import-status", "❌ " + err.message, "err"); }
-  };
-  r.readAsText(file);
-}
-
-function downloadJSON() {
-  if (!entrenamientos.length) { setStatus("json-dl-status","❌ No hay datos","err"); return; }
-  dl(JSON.stringify(entrenamientos, null, 2), "entrenamientos.json", "application/json");
-  setStatus("json-dl-status","✅ JSON descargado. Súbelo a GitHub como copia de seguridad.","ok");
-}
-
+// ── Excel ──
 function downloadExcel() {
   if (!entrenamientos.length) { setStatus("excel-dl-status","❌ No hay datos","err"); return; }
   var rows = entrenamientos.map(function(e) {
-    return {
-      "Fecha": e.fecha,
-      "Tiempo": e.tiempo,
-      "Distancia (km)": e.distancia,
-      "Calorías quemadas": e.calorias,
-      "Calorías/hora": e.caloriasHora,
-      "Velocidad media (km/h)": e.velocidad
-    };
+    return { "Fecha":e.fecha, "Tiempo":e.tiempo, "Distancia (km)":e.distancia,
+      "Calorías quemadas":e.calorias, "Calorías/hora":e.caloriasHora, "Velocidad media (km/h)":e.velocidad };
   });
   var ws = XLSX.utils.json_to_sheet(rows);
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Entrenamientos");
   XLSX.writeFile(wb, "entrenamientos.xlsx");
-  setStatus("excel-dl-status","✅ Excel descargado correctamente.","ok");
+  setStatus("excel-dl-status","✅ Excel descargado.","ok");
 }
 
+// ── Helpers ──
 function updateSubtitle() {
   document.getElementById("subtitle").textContent = entrenamientos.length + " entrenamientos registrados";
 }
-
 function setStatus(id, msg, type) {
   var el = document.getElementById(id);
   el.innerHTML = msg;
@@ -476,11 +534,21 @@ function setStatus(id, msg, type) {
   el.style.display = msg ? "block" : "none";
 }
 
-function dl(content, filename, type) {
-  var a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([content],{type:type}));
-  a.download = filename;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+// ── Init ──
+function init() {
+  document.getElementById("f-fecha").value = new Date().toISOString().split("T")[0];
+  var cfg = getConfig();
+  if (cfg.token) {
+    document.getElementById("cfg-token").value = cfg.token;
+    document.getElementById("cfg-user").value = cfg.user;
+    document.getElementById("cfg-repo").value = cfg.repo;
+    document.getElementById("cfg-file").value = cfg.file || "entrenamientos.json";
+    updateBadge(true);
+    cargarDesdeGitHub();
+  } else {
+    updateBadge(false);
+    document.getElementById("historial-content").innerHTML = '<div class="empty">Configura tu token de GitHub en ⚙️ Ajustes.</div>';
+  }
 }
 
 init();
